@@ -22,3 +22,12 @@ lerna-debug.log*
 # temp directory
 .temp
 .tmp
+
+
+node_modules/
+.env
+data/*.json
+data/*.tmp
+!data/.gitkeep
+npm-debug.log*
+.DS_Store

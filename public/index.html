@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="API Monitor">
+  <title>Monitor API Kursinha</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="header">
+      <div>
+        <p class="eyebrow">KURSINHA</p>
+        <h1>Monitor da API</h1>
+      </div>
+      <span id="connection-pill" class="pill neutral">Carregando</span>
+    </header>
+
+    <section class="status-card" aria-live="polite">
+      <div id="status-dot" class="status-dot unknown"></div>
+      <div>
+        <p class="label">Estado atual</p>
+        <h2 id="status-title">Verificando…</h2>
+        <p id="status-message" class="muted">Consultando o servidor de monitoramento.</p>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="metric">
+        <span>Resposta</span>
+        <strong id="response-time">—</strong>
+      </article>
+      <article class="metric">
+        <span>HTTP</span>
+        <strong id="status-code">—</strong>
+      </article>
+      <article class="metric">
+        <span>Último teste</span>
+        <strong id="last-check">—</strong>
+      </article>
+      <article class="metric">
+        <span>Dispositivos</span>
+        <strong id="subscriber-count">—</strong>
+      </article>
+    </section>
+
+    <section class="actions">
+      <button id="enable-notifications" class="button primary">Ativar notificações</button>
+      <button id="test-notification" class="button" disabled>Enviar notificação de teste</button>
+      <button id="check-now" class="button">Verificar agora</button>
+    </section>
+
+    <section id="install-help" class="notice hidden">
+      <strong>Instalação no iPhone</strong>
+      <p>Abra esta página no Safari, toque em Compartilhar e depois em “Adicionar à Tela de Início”. Abra o app instalado e toque em “Ativar notificações”.</p>
+    </section>
+
+    <section id="token-box" class="notice hidden">
+      <strong>Acesso protegido</strong>
+      <p>Informe o token configurado no servidor.</p>
+      <form id="token-form">
+        <input id="token-input" type="password" autocomplete="current-password" placeholder="Token de acesso" required>
+        <button class="button" type="submit">Entrar</button>
+      </form>
+    </section>
+
+    <footer>
+      <span id="monitored-url">https://api.kursinha.com/</span>
+      <span id="notification-state">Notificações desativadas</span>
+    </footer>
+  </main>
+
+  <div id="toast" class="toast hidden" role="status"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

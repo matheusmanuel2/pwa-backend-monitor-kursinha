@@ -1,0 +1,20 @@
+{
+  "name": "kursinha-api-monitor-pwa",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Monitor PWA com Web Push para a API Kursinha",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "dev": "node --env-file-if-exists=.env --watch server.js",
+    "check": "node --check server.js && node --check public/app.js && node --check public/sw.js"
+  },
+  "dependencies": {
+    "express": "5.2.1",
+    "helmet": "8.1.0",
+    "web-push": "3.6.7"
+  }
+}
