@@ -37,6 +37,7 @@ function showToast(message) {
   toastTimer = setTimeout(() => elements.toast.classList.add('hidden'), 3500);
 }
 
+
 function formatDate(date) {
   if (!date) return '—';
   return new Intl.DateTimeFormat('pt-BR', {
