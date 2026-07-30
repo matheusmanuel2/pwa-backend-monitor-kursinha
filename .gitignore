@@ -26,8 +26,8 @@ lerna-debug.log*
 
 node_modules/
 .env
-data/*.json
-data/*.tmp
-!data/.gitkeep
+**/data/*.json
+**/data/*.tmp
+!**/data/.gitkeep
 npm-debug.log*
 .DS_Store
