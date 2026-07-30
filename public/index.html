@@ -27,7 +27,7 @@
       <div>
         <p class="label">Estado atual</p>
         <h2 id="status-title">Verificando…</h2>
-        <p id="status-message" class="muted">Consultando o servidor de monitoramento.</p>
+        <p id="status-message" class="muted">Consultando a API diretamente do navegador.</p>
       </div>
     </section>
 
@@ -37,16 +37,12 @@
         <strong id="response-time">—</strong>
       </article>
       <article class="metric">
-        <span>HTTP</span>
-        <strong id="status-code">—</strong>
+        <span>Falhas seguidas</span>
+        <strong id="consecutive-failures">—</strong>
       </article>
       <article class="metric">
         <span>Último teste</span>
         <strong id="last-check">—</strong>
-      </article>
-      <article class="metric">
-        <span>Dispositivos</span>
-        <strong id="subscriber-count">—</strong>
       </article>
     </section>
 
@@ -56,18 +52,15 @@
       <button id="check-now" class="button">Verificar agora</button>
     </section>
 
-    <section id="install-help" class="notice hidden">
-      <strong>Instalação no iPhone</strong>
-      <p>Abra esta página no Safari, toque em Compartilhar e depois em “Adicionar à Tela de Início”. Abra o app instalado e toque em “Ativar notificações”.</p>
-    </section>
-
-    <section id="token-box" class="notice hidden">
-      <strong>Acesso protegido</strong>
-      <p>Informe o token configurado no servidor.</p>
-      <form id="token-form">
-        <input id="token-input" type="password" autocomplete="current-password" placeholder="Token de acesso" required>
-        <button class="button" type="submit">Entrar</button>
-      </form>
+    <section class="notice">
+      <strong>Como isso funciona</strong>
+      <p>
+        Tudo roda aqui no navegador, sem servidor. A checagem só acontece enquanto esta aba
+        estiver aberta — se você fechar o navegador ou o computador desligar, o monitoramento para.
+        No iPhone/Safari, notificações de site comum têm suporte limitado ou nenhum.
+        A API bloqueia CORS, então detectamos apenas se ela está <em>alcançável</em>
+        (timeout, DNS ou conexão recusada = "caiu"); um erro HTTP 4xx/5xx pode não ser detectado.
+      </p>
     </section>
 
     <footer>
@@ -77,6 +70,6 @@
   </main>
 
   <div id="toast" class="toast hidden" role="status"></div>
-  <script type="module" src="/app.js"></script>
+  <script src="/app.js"></script>
 </body>
 </html>

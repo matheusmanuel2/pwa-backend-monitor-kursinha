@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js",
     "dev": "node --env-file-if-exists=.env --watch server.js",
-    "check": "node --check server.js && node --check public/app.js && node --check public/sw.js"
+    "check": "node --check server.js && node --check public/app.js"
   },
   "dependencies": {
     "express": "5.2.1",

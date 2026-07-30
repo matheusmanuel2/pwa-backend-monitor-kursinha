@@ -1,3 +1,9 @@
+const API_URL = 'https://api.kursinha.com/';
+const CHECK_INTERVAL_MS = 60000;
+const REQUEST_TIMEOUT_MS = 10000;
+const FAILURE_THRESHOLD = 2;
+const MANUAL_CHECK_COOLDOWN_MS = 10000;
+
 const $ = (selector) => document.querySelector(selector);
 
 const elements = {
@@ -6,56 +12,23 @@ const elements = {
   title: $('#status-title'),
   message: $('#status-message'),
   responseTime: $('#response-time'),
-  statusCode: $('#status-code'),
+  consecutiveFailures: $('#consecutive-failures'),
   lastCheck: $('#last-check'),
-  subscriberCount: $('#subscriber-count'),
   monitoredUrl: $('#monitored-url'),
   notificationState: $('#notification-state'),
   enableButton: $('#enable-notifications'),
   testButton: $('#test-notification'),
   checkButton: $('#check-now'),
-  installHelp: $('#install-help'),
-  tokenBox: $('#token-box'),
-  tokenForm: $('#token-form'),
-  tokenInput: $('#token-input'),
   toast: $('#toast')
 };
 
-let config = null;
-let registration = null;
-let currentSubscription = null;
+let status = 'unknown';
+let consecutiveFailures = 0;
+let lastCheckAt = null;
+let lastResponseTimeMs = null;
+let lastManualCheckAt = 0;
 let toastTimer = null;
-let token = localStorage.getItem('monitorToken') || '';
-
-function isIOS() {
-  return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-}
-
-function isStandalone() {
-  return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
-}
-
-function authHeaders(extra = {}) {
-  return token ? { ...extra, 'x-monitor-token': token } : extra;
-}
-
-async function apiFetch(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: authHeaders(options.headers || {})
-  });
-
-  if (response.status === 401) {
-    elements.tokenBox.classList.remove('hidden');
-    throw new Error('Informe o token de acesso.');
-  }
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `Erro HTTP ${response.status}`);
-  elements.tokenBox.classList.add('hidden');
-  return data;
-}
+let checkTimer = null;
 
 function showToast(message) {
   clearTimeout(toastTimer);
@@ -64,9 +37,8 @@ function showToast(message) {
   toastTimer = setTimeout(() => elements.toast.classList.add('hidden'), 3500);
 }
 
-function formatDate(value) {
-  if (!value) return '—';
-  const date = new Date(value);
+function formatDate(date) {
+  if (!date) return '—';
   return new Intl.DateTimeFormat('pt-BR', {
     day: '2-digit',
     month: '2-digit',
@@ -76,8 +48,16 @@ function formatDate(value) {
   }).format(date);
 }
 
-function renderState(state) {
-  const status = state.status || 'unknown';
+function notify(title, body) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    new Notification(title, { body, tag: 'kursinha-status', icon: '/icons/icon-192.png' });
+  } catch (error) {
+    console.error('Falha ao exibir notificação:', error);
+  }
+}
+
+function render() {
   const isUp = status === 'up';
   const isDown = status === 'down';
 
@@ -86,91 +66,92 @@ function renderState(state) {
   elements.pill.textContent = isUp ? 'Online' : isDown ? 'Fora do ar' : 'Verificando';
   elements.title.textContent = isUp ? 'API online' : isDown ? 'API fora do ar' : 'Verificando…';
   elements.message.textContent = isDown
-    ? (state.error || 'A API não respondeu corretamente.')
+    ? 'A API não respondeu (timeout, DNS ou conexão recusada).'
     : isUp
-      ? `Última resposta válida em ${state.responseTimeMs ?? '—'} ms.`
-      : 'Aguardando dados suficientes para definir o estado.';
+      ? `Última checagem alcançou a API em ${lastResponseTimeMs ?? '—'} ms.`
+      : 'Aguardando checagens suficientes para definir o estado.';
 
-  elements.responseTime.textContent = state.responseTimeMs == null ? '—' : `${state.responseTimeMs} ms`;
-  elements.statusCode.textContent = state.statusCode ?? '—';
-  elements.lastCheck.textContent = formatDate(state.lastCheckAt);
-  elements.subscriberCount.textContent = state.subscriberCount ?? '—';
+  elements.responseTime.textContent = lastResponseTimeMs == null ? '—' : `${lastResponseTimeMs} ms`;
+  elements.consecutiveFailures.textContent = consecutiveFailures;
+  elements.lastCheck.textContent = formatDate(lastCheckAt);
+  elements.monitoredUrl.textContent = API_URL;
 }
 
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
-  const rawData = atob(base64);
-  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
-}
+async function performCheck() {
+  const startedAt = Date.now();
+  let reachable = false;
 
-async function loadConfigAndStatus() {
-  config = await apiFetch('/api/config', { cache: 'no-store' });
-  elements.monitoredUrl.textContent = config.apiUrl;
-  const state = await apiFetch('/api/status', { cache: 'no-store' });
-  renderState(state);
-}
-
-async function updatePushState() {
-  if (!registration || !('PushManager' in window)) {
-    elements.notificationState.textContent = 'Web Push não disponível';
-    elements.enableButton.disabled = true;
-    return;
+  try {
+    await fetch(API_URL, {
+      mode: 'no-cors',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+    });
+    reachable = true;
+  } catch (error) {
+    reachable = false;
   }
 
-  currentSubscription = await registration.pushManager.getSubscription();
-  const granted = Notification.permission === 'granted' && currentSubscription;
-  elements.notificationState.textContent = granted ? 'Notificações ativas' : 'Notificações desativadas';
+  lastResponseTimeMs = Date.now() - startedAt;
+  lastCheckAt = new Date();
+
+  const previousStatus = status;
+
+  if (reachable) {
+    consecutiveFailures = 0;
+    status = 'up';
+    if (previousStatus === 'down') notify('API Kursinha voltou', `Respondendo novamente (${lastResponseTimeMs} ms).`);
+  } else {
+    consecutiveFailures += 1;
+    if (consecutiveFailures >= FAILURE_THRESHOLD) {
+      if (previousStatus !== 'down') notify('API Kursinha caiu', 'Sem resposta ao tentar acessar a API.');
+      status = 'down';
+    } else if (previousStatus === 'unknown') {
+      status = 'checking';
+    }
+  }
+
+  render();
+}
+
+async function updateNotificationState() {
+  const supported = 'Notification' in window;
+  const granted = supported && Notification.permission === 'granted';
+  elements.notificationState.textContent = !supported
+    ? 'Notificações não suportadas neste navegador'
+    : granted
+      ? 'Notificações ativas'
+      : 'Notificações desativadas';
   elements.enableButton.textContent = granted ? 'Notificações ativadas' : 'Ativar notificações';
-  elements.enableButton.disabled = Boolean(granted);
+  elements.enableButton.disabled = !supported || granted;
   elements.testButton.disabled = !granted;
 }
 
 async function enableNotifications() {
-  if (isIOS() && !isStandalone()) {
-    elements.installHelp.classList.remove('hidden');
-    showToast('No iPhone, instale primeiro pela opção “Adicionar à Tela de Início”.');
-    return;
-  }
-
+  if (!('Notification' in window)) throw new Error('Este navegador não suporta notificações.');
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') throw new Error('Permissão de notificação não concedida.');
-
-  currentSubscription = await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(config.vapidPublicKey)
-  });
-
-  await apiFetch('/api/subscribe', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(currentSubscription)
-  });
-
-  await updatePushState();
-  await loadConfigAndStatus();
-  showToast('Notificações ativadas neste dispositivo.');
+  await updateNotificationState();
+  showToast('Notificações ativadas neste navegador.');
 }
 
-async function testNotification() {
-  currentSubscription = await registration.pushManager.getSubscription();
-  if (!currentSubscription) throw new Error('Ative as notificações primeiro.');
-
-  await apiFetch('/api/test-notification', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(currentSubscription)
-  });
+function testNotification() {
+  notify('Teste do monitor', 'As notificações estão funcionando neste navegador.');
   showToast('Notificação de teste enviada.');
 }
 
 async function checkNow() {
+  const now = Date.now();
+  if (now - lastManualCheckAt < MANUAL_CHECK_COOLDOWN_MS) {
+    showToast('Aguarde alguns segundos antes de testar novamente.');
+    return;
+  }
+  lastManualCheckAt = now;
+
   elements.checkButton.disabled = true;
   elements.checkButton.textContent = 'Verificando…';
   try {
-    const state = await apiFetch('/api/check-now', { method: 'POST' });
-    const status = await apiFetch('/api/status', { cache: 'no-store' });
-    renderState({ ...state, subscriberCount: status.subscriberCount });
+    await performCheck();
     showToast('Verificação concluída.');
   } finally {
     elements.checkButton.disabled = false;
@@ -187,39 +168,17 @@ async function runAction(action) {
   }
 }
 
-async function init() {
-  if ('serviceWorker' in navigator) {
-    registration = await navigator.serviceWorker.register('/sw.js');
-    await navigator.serviceWorker.ready;
-  }
-
-  if (isIOS() && !isStandalone()) elements.installHelp.classList.remove('hidden');
-
-  await runAction(loadConfigAndStatus);
-  await runAction(updatePushState);
-
-  setInterval(() => runAction(loadConfigAndStatus), 30000);
+function init() {
+  render();
+  updateNotificationState();
+  runAction(performCheck);
+  checkTimer = setInterval(() => runAction(performCheck), CHECK_INTERVAL_MS);
 }
 
 elements.enableButton.addEventListener('click', () => runAction(enableNotifications));
 elements.testButton.addEventListener('click', () => runAction(testNotification));
 elements.checkButton.addEventListener('click', () => runAction(checkNow));
-elements.tokenForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  token = elements.tokenInput.value.trim();
-  localStorage.setItem('monitorToken', token);
-  elements.tokenInput.value = '';
-  runAction(async () => {
-    await loadConfigAndStatus();
-    await updatePushState();
-    showToast('Acesso liberado.');
-  });
-});
 
-window.addEventListener('online', () => runAction(loadConfigAndStatus));
-window.addEventListener('offline', () => showToast('Este dispositivo está sem internet.'));
+window.addEventListener('beforeunload', () => clearInterval(checkTimer));
 
-init().catch((error) => {
-  console.error(error);
-  showToast('Falha ao iniciar o monitor.');
-});
+init();
